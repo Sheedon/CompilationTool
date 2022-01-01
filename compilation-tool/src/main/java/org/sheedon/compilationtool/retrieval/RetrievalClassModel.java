@@ -43,6 +43,8 @@ public abstract class RetrievalClassModel {
     private final Map<String, String> compareTable = new HashMap<>();
     // 泛型对照表的key 关联当前泛型集合的位置
     private final Map<Integer, String> bindPositions = new HashMap<>();
+    // 默认前缀
+    final static String PREFIX = "TYPE-";
 
     public RetrievalClassModel() {
     }
@@ -54,6 +56,20 @@ public abstract class RetrievalClassModel {
      * @param entityClassName 实际参数类型名称
      */
     public void addGenericsRecord(String typeName, String entityClassName) {
+        if (typeName.startsWith(PREFIX)) {
+            typeName = typeName.replaceFirst(PREFIX, "");
+            IGenericsRecord record = getRecord();
+            record.put(typeName, entityClassName);
+        }
+    }
+
+    /**
+     * 添加目标泛型记录
+     *
+     * @param typeName        参数类型名称
+     * @param entityClassName 实际参数类型名称
+     */
+    public void addTargetGenericsRecord(String typeName, String entityClassName) {
         IGenericsRecord record = getRecord();
         record.put(typeName, entityClassName);
     }

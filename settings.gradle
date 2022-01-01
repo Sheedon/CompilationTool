@@ -1,3 +1,4 @@
 rootProject.name = "CompilationTool"
 include ':app'
 include ':compilation-tool'
+include ':annotation_lib'

@@ -1,12 +1,10 @@
 package org.sheedon.compilationtool.retrieval;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-import javax.annotation.processing.Messager;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.TypeParameterElement;
@@ -14,7 +12,6 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
-import javax.tools.Diagnostic;
 
 /**
  * 检索 绑定在类上的泛型
@@ -35,9 +32,8 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
      * 将RequestCard, ResponseModel所对应的「实体类全类名」绑定到泛型类型上，
      * 构建成RetrievalClassModel 存入classMap
      *
-     * @param element  类型元素
-     * @param types    类型工具类
-     * @param messager 描述信息提示类
+     * @param element 类型元素
+     * @param types   类型工具类
      */
     @Override
     public RetrievalClassModel searchClassGenerics(TypeElement element, Types types) {
@@ -67,36 +63,17 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         };
         retrievalMap.putIfAbsent(qualifiedName, currentModel);
 
-        // 父类检索信息
-        RetrievalClassModel superRetrievalModel = retrievalSuperClass(element, types);
-        if (superRetrievalModel == null) {
-            return null;
-        }
 
-        // 是否填充完整，是则浅拷贝，并且返回
-        if (superRetrievalModel.isCompeted()) {
-            currentModel.bindGenericsRecord(currentModel.getRecord());
-            return currentModel;
-        }
-
-        // 否则，采用深拷贝
-        IGenericsRecord record = cloneBySuperRecord(superRetrievalModel.getRecord());
-        currentModel.bindGenericsRecord(record);
-        RetrievalClassModel nodeClass = traverseNodeGenerics(superTypeMirror, qualifiedName, classModel);
-        if (nodeClass == null) {
-            messager.printMessage(Diagnostic.Kind.ERROR, "please add generics in " + qualifiedName, element);
-            return null;
-        }
-
-        return currentModel;
+        // 检索得到当前类的泛型信息
+        return retrievalCurrentClass(element, types);
     }
 
     /**
-     * 检索父类泛型信息
+     * 检索得到当前类
      * 1。是否是目标类
      * 2。是否是剔除包下的类
      */
-    private RetrievalClassModel retrievalSuperClass(TypeElement element, Types types) {
+    private RetrievalClassModel retrievalCurrentClass(TypeElement element, Types types) {
         TypeMirror superTypeMirror = element.getSuperclass();
         if (superTypeMirror == null) {
             return null;
@@ -110,18 +87,22 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         // 获取父类信息
         Map<String, RetrievalClassModel> classMap = retrieval.retrievalClassMap();
         TypeElement superTypeElement = (TypeElement) superElement;
+        // 父类RetrievalClassModel
         String superclassName = superTypeElement.getQualifiedName().toString();
-        // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
         RetrievalClassModel superRetrievalModel = classMap.get(superclassName);
-        if (superRetrievalModel != null) {
-            return superRetrievalModel;
+        // 当前类的RetrievalClassModel
+        String qualifiedName = element.getQualifiedName().toString();
+        RetrievalClassModel currentModel = classMap.get(qualifiedName);
+
+        // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
+        RetrievalClassModel checkLoaded = checkLoaded(superRetrievalModel, currentModel, element);
+        if (checkLoaded != null) {
+            return checkLoaded;
         }
 
         // 目标节点
         String targetClassName = retrieval.canonicalName();
         if (Objects.equals(superclassName, targetClassName)) {
-            // 当前类的全类名
-            String qualifiedName = element.getQualifiedName().toString();
             // 目标节点
             RetrievalClassModel nodeClass = traverseTargetGenerics(superTypeMirror, qualifiedName);
             if (nodeClass == null) {
@@ -140,7 +121,45 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
             }
         }
 
-        return searchClassGenerics(superTypeElement, types);
+        // 得到父类检索信息
+        RetrievalClassModel superClassModel = searchClassGenerics(superTypeElement, types);
+        if (superClassModel == null) {
+            return null;
+        }
+
+        return traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element);
+    }
+
+
+    // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
+    private RetrievalClassModel checkLoaded(RetrievalClassModel superRetrievalModel,
+                                            RetrievalClassModel currentModel,
+                                            TypeElement element) {
+        if (superRetrievalModel == null) {
+            return null;
+        }
+
+        // 是否填充完整，是则浅拷贝，并且返回
+        if (superRetrievalModel.isCompeted()) {
+            currentModel.bindGenericsRecord(currentModel.getRecord());
+            return currentModel;
+        }
+
+        return traverseNodeAndBindPosition(element.getSuperclass(), currentModel, superRetrievalModel, element);
+    }
+
+    private RetrievalClassModel traverseNodeAndBindPosition(TypeMirror superTypeMirror,
+                                                            RetrievalClassModel currentModel,
+                                                            RetrievalClassModel superClassModel,
+                                                            TypeElement element) {
+
+        // 否则，采用深拷贝
+        IGenericsRecord record = cloneBySuperRecord(superClassModel.getRecord());
+        currentModel.bindGenericsRecord(record);
+
+        traverseNodeGenerics(superTypeMirror, currentModel, superClassModel);
+        appendBindPosition(currentModel, element.getTypeParameters());
+        return currentModel;
     }
 
     /**
@@ -186,9 +205,9 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
 
             TypeMirror mirror = typeArguments.get(index);
             if (mirror.getKind() == TypeKind.DECLARED) {
-                classModel.addGenericsRecord(typeName, mirror.toString());
+                classModel.addTargetGenericsRecord(typeName, mirror.toString());
             } else {
-                classModel.recordType(mirror.toString(), typeName);
+                classModel.recordType(mirror.toString(), RetrievalClassModel.PREFIX + typeName);
             }
         }
         return classModel;
@@ -222,9 +241,11 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
      * 3. 匹配描述泛型kind == TypeKind.DECLARED，代表可以填充
      * 4. 不匹配的记录到对照表中
      */
-    private RetrievalClassModel traverseNodeGenerics(TypeMirror superTypeMirror, String currentQualifiedName, RetrievalClassModel superClassModel) {
+    private RetrievalClassModel traverseNodeGenerics(TypeMirror superTypeMirror,
+                                                     RetrievalClassModel currentModel,
+                                                     RetrievalClassModel superClassModel) {
         if (!(superTypeMirror instanceof DeclaredType)) {
-            return null;
+            return superClassModel;
         }
 
         DeclaredType declaredType = (DeclaredType) superTypeMirror;
@@ -232,24 +253,21 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         List<? extends TypeMirror> typeArguments = declaredType.getTypeArguments();
 
         if (typeArguments.isEmpty()) {
-            return null;
+            return superClassModel;
         }
-
-        Map<String, RetrievalClassModel> classMap = retrieval.retrievalClassMap();
-        RetrievalClassModel classModel = classMap.get(currentQualifiedName);
 
         Set<Integer> positions = superClassModel.getPositions();
         for (Integer position : positions) {
             String typeName = superClassModel.getTypeNameByPosition(position);
             TypeMirror mirror = typeArguments.get(position);
             if (mirror.getKind() == TypeKind.DECLARED) {
-                classModel.addGenericsRecord(typeName, mirror.toString());
+                currentModel.addGenericsRecord(typeName, mirror.toString());
             } else {
-                classModel.recordType(mirror.toString(), typeName);
+                currentModel.recordType(mirror.toString(), typeName);
             }
         }
 
-        return classModel;
+        return currentModel;
     }
 
     /**

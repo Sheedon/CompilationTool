@@ -1,9 +1,5 @@
 package org.sheedon.compilationtool.retrieval;
 
-import javax.annotation.processing.Messager;
-import javax.lang.model.element.TypeElement;
-import javax.lang.model.util.Types;
-
 /**
  * 抽象泛型检索类
  *

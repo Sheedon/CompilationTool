@@ -45,7 +45,7 @@ public interface IRetrieval {
      */
     class Factory {
 
-        AbstractRetrieval createRetrieval() {
+        public AbstractRetrieval createRetrieval() {
             return null;
         }
     }
