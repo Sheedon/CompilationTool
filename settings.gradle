@@ -1,0 +1,3 @@
+rootProject.name = "CompilationTool"
+include ':app'
+include ':compilation-tool'
