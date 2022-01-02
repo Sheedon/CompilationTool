@@ -6,6 +6,7 @@ import java.util.Objects;
 
 /**
  * AbstractRequestRouter 泛型记录
+ *
  * 包含对应位置下的泛型内容
  * AbstractRequestRouter 中定义了两个泛型：「RequestCard」「ResponseModel」
  * 当前需要匹配同类型，并且设置到genericsArray制定的位置上
