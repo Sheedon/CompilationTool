@@ -43,7 +43,7 @@ public abstract class RetrievalClassModel {
     private final Map<String, String> compareTable = new HashMap<>();
     // 泛型对照表的key 关联当前泛型集合的位置
     private final Map<Integer, String> bindPositions = new HashMap<>();
-    // 默认前缀
+    // 默认前缀，防止与目标类名字重复，导致填充问题
     final static String PREFIX = "TYPE-";
 
     public RetrievalClassModel() {

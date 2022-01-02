@@ -66,13 +66,13 @@ public class GenericsTestProcessor extends AbstractProcessor {
 
         ClassGenericsRetrievalTest test = new ClassGenericsRetrievalTest();
 
-        ClassGenericsRetrieval retrieval = new ClassGenericsRetrieval(test.createRetrieval());
+        ClassGenericsRetrieval retrieval = new ClassGenericsRetrieval(test);
         Set<? extends Element> elements = roundEnv.getElementsAnnotatedWith(GenericsTest.class);
         for (Element element : elements) {
             retrieval.searchClassGenerics((TypeElement) element, mTypeUtils);
         }
 
-        System.out.println(test.createRetrieval().retrievalClassMap());
+        System.out.println(test.retrievalClassMap());
         return true;
     }
 }

@@ -14,7 +14,42 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
 
 /**
- * 检索 绑定在类上的泛型
+ * 「类上泛型」检索类，在处理编译时信息时，若我们的目标类包含泛型，那么为了关联「泛型类型」和「数据类型」，
+ * 这必然通过套泛型的检索算法来获取「泛型类型」所指向的「数据类型」。
+ * 例如：
+ * <code>
+ * // 我们设置的目标类
+ * public class TargetClass<T,K>{
+ * }
+ * // 直接继承自目标类的包装类
+ * public class ParentClass<K,Model> extends TargetClass<K,String>{
+ * }
+ * // 实际使用的类
+ * public class CurrentClass extends ParentClass<Org,UserModel>{
+ * }
+ * </code>
+ * 检索的逻辑为，从当前类开始向父类依次检索，直至搜索到「目标类」或「被检查过」的类为止，
+ * 若搜索不到，则代表当前类不在我们目标检索的类范围，反馈null，否则得到搜索到的结果返回调用者。
+ * 在此，我的实现逻辑分为如下步骤：
+ * 0.核实当前类是否被检索过，优化效率。
+ * 1.核实当前是类，并且父类存在，以确保功能搜索方向没有错（当前是「类上泛型」检索类）。
+ * 2.检索记录当前类信息
+ * 2.1 加载父类检索信息，存在则直接关联到当前类上，无需再度向上检索，不存在继续执行检索。
+ * 2.2 核实是否是目标类，是则与当前类关联，否则继续检索。
+ * 2.3 核实是否在排除包中，是则说明搜索不到，返回null，否则继续检索。
+ * 2.4 回到0，检索父类信息
+ * 3.关联行为，分为「同类-层级关联」和「继承类-坐标关联」
+ * 3.1 同类-层级关联：
+ * 在 ParentClass 类中的 形式类 TargetClass<K,String> 和 实际类 TargetClass<T,K> 进行泛型关联。
+ * 情况一：将泛型类型和泛型类型关联，TargetClass<K,String>中的K 和 TargetClass<T,K> 的T关联。
+ * 情况二：将数据类型 String 与 K 绑定。
+ * 由此，在 ParentClass 实际关联的 TargetClass 泛型为 T 和 K=String
+ * 3.2 继承类-坐标关联:
+ * 同样在 ParentClass 类中，ParentClass<K,Model> 和 TargetClass<K,String> 要进行位置上的关联。
+ * 由 3.1 可知 TargetClass<K,String> 中的K，实际上是「目标类」中的T，
+ * 所以对等，要将 ParentClass中的K 等效为T，从而记录格式并且向子类传递。
+ * <p>
+ * 由以上4步，便可得到当前类所关联的目标类的定义信息。
  *
  * @Author: sheedon
  * @Email: sheedonsun@163.com
@@ -28,9 +63,8 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
     }
 
     /**
-     * 搜索从当前类开始，层级向上，检索至目标类为止
-     * 将RequestCard, ResponseModel所对应的「实体类全类名」绑定到泛型类型上，
-     * 构建成RetrievalClassModel 存入classMap
+     * 从当前类开始检索，层级向上，搜索到目标类为止，再层级返回填充泛型存储信息，
+     * 最终将当前类的泛型关联信息作为结果输出。
      *
      * @param element 类型元素
      * @param types   类型工具类
@@ -61,7 +95,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
                 return retrieval.genericsRecord();
             }
         };
-        retrievalMap.putIfAbsent(qualifiedName, currentModel);
+        retrievalMap.put(qualifiedName, currentModel);
 
 
         // 检索得到当前类的泛型信息
@@ -69,9 +103,19 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
     }
 
     /**
-     * 检索得到当前类
-     * 1。是否是目标类
-     * 2。是否是剔除包下的类
+     * 检索得到当前类的泛型存储信息，需要得到当前类的泛型存储信息：
+     * 1.父类必然是 TypeElement 类型元素。
+     * 2.核实父类是否已加载泛型存储数据，有则根据是否泛型填充完整，做关联行为，
+     * 若填充完整，则浅拷贝，共用同一个存储对象。
+     * 若不完整，则深拷贝，防止更改时影响父类的存储元素。
+     * 3.核实是否是目标节点类，是则遍历关联泛型信息。
+     * 4.核实父类是否是在过滤包中，是则返回null，无需再次查找。
+     * 5.父类信息检索不到，则向祖父类检索 回到 searchClassGenerics()方法
+     * 6.从父类得到数据后，将泛型数据关联「同类-层级关联」+「继承类-坐标关联」。
+     *
+     * @param element 当前类的元素
+     * @param types   类型工具
+     * @return RetrievalClassModel 检索泛型数据信息
      */
     private RetrievalClassModel retrievalCurrentClass(TypeElement element, Types types) {
         TypeMirror superTypeMirror = element.getSuperclass();
@@ -112,8 +156,8 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
             return nodeClass;
         }
 
-        // 节点类型
-        // 根节点
+
+        // 根节点/需要过滤的节点
         Set<String> filterablePackages = retrieval.filterablePackages();
         for (String filterablePackage : filterablePackages) {
             if (superclassName.startsWith(filterablePackage)) {
@@ -127,11 +171,19 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
             return null;
         }
 
+        // 将泛型数据关联「同类-层级关联」+「继承类-坐标关联」
         return traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element);
     }
 
 
-    // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
+    /**
+     * 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
+     *
+     * @param superRetrievalModel 父类检索信息
+     * @param currentModel        当前类的检索信息
+     * @param element             当前类的类型元素
+     * @return RetrievalClassModel 父类检索信息绑定到当前类
+     */
     private RetrievalClassModel checkLoaded(RetrievalClassModel superRetrievalModel,
                                             RetrievalClassModel currentModel,
                                             TypeElement element) {
@@ -145,9 +197,19 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
             return currentModel;
         }
 
+        // 遍历节点，用于绑定坐标
         return traverseNodeAndBindPosition(element.getSuperclass(), currentModel, superRetrievalModel, element);
     }
 
+    /**
+     * 「同类-层级关联」+「继承类-坐标关联」
+     *
+     * @param superTypeMirror 父类类型
+     * @param currentModel    当前类的泛型数据存储
+     * @param superClassModel 父类的泛型数据存储
+     * @param element         当前类的类型元素
+     * @return 父类检索信息绑定到当前类
+     */
     private RetrievalClassModel traverseNodeAndBindPosition(TypeMirror superTypeMirror,
                                                             RetrievalClassModel currentModel,
                                                             RetrievalClassModel superClassModel,
@@ -197,6 +259,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
             return null;
         }
 
+        // 「同类-层级关联」
         Map<String, RetrievalClassModel> classMap = retrieval.retrievalClassMap();
         RetrievalClassModel classModel = classMap.get(currentQualifiedName);
         for (int index = 0; index < superParameters.size(); index++) {
@@ -215,7 +278,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
 
 
     /**
-     * 追加绑定泛型类型的位置
+     * 追加绑定泛型类型的位置，「继承类-坐标关联」
      * AClass<T> extends BClass<T>{
      * <p>
      * }
@@ -241,11 +304,11 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
      * 3. 匹配描述泛型kind == TypeKind.DECLARED，代表可以填充
      * 4. 不匹配的记录到对照表中
      */
-    private RetrievalClassModel traverseNodeGenerics(TypeMirror superTypeMirror,
-                                                     RetrievalClassModel currentModel,
-                                                     RetrievalClassModel superClassModel) {
+    private void traverseNodeGenerics(TypeMirror superTypeMirror,
+                                      RetrievalClassModel currentModel,
+                                      RetrievalClassModel superClassModel) {
         if (!(superTypeMirror instanceof DeclaredType)) {
-            return superClassModel;
+            return;
         }
 
         DeclaredType declaredType = (DeclaredType) superTypeMirror;
@@ -253,9 +316,10 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         List<? extends TypeMirror> typeArguments = declaredType.getTypeArguments();
 
         if (typeArguments.isEmpty()) {
-            return superClassModel;
+            return;
         }
 
+        // 「同类-层级关联」通过坐标获取泛型类型
         Set<Integer> positions = superClassModel.getPositions();
         for (Integer position : positions) {
             String typeName = superClassModel.getTypeNameByPosition(position);
@@ -267,7 +331,6 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
             }
         }
 
-        return currentModel;
     }
 
     /**

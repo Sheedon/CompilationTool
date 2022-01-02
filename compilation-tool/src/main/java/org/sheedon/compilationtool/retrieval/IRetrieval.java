@@ -40,16 +40,6 @@ public interface IRetrieval {
     IGenericsRecord genericsRecord();
 
 
-    /**
-     * 检索工厂类
-     */
-    class Factory {
-
-        public AbstractRetrieval createRetrieval() {
-            return null;
-        }
-    }
-
     abstract class AbstractRetrieval implements IRetrieval{
 
         private final Map<String, RetrievalClassModel> classMap = new HashMap<>();
