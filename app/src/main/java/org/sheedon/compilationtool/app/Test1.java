@@ -10,4 +10,5 @@ import org.sheedon.annotation.TargetClass;
  * @Date: 2022/1/2 12:36 上午
  */
 public class Test1<T, K> extends TargetClass<T, K> {
+
 }

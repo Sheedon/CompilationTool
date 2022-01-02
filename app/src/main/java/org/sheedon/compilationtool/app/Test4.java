@@ -11,4 +11,15 @@ import org.sheedon.annotation.GenericsTest;
  */
 @GenericsTest
 public class Test4 extends Test3<String, String, Integer> {
+
+    private String name;
+    private int age;
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 }
