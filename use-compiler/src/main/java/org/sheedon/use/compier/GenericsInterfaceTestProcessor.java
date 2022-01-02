@@ -2,8 +2,10 @@ package org.sheedon.use.compier;
 
 import com.google.auto.service.AutoService;
 
-import org.sheedon.annotation.GenericsTest;
+import org.sheedon.annotation.GenericsClassTest;
+import org.sheedon.annotation.GenericsInterfaceTest;
 import org.sheedon.compilationtool.retrieval.ClassGenericsRetrieval;
+import org.sheedon.compilationtool.retrieval.InterfaceGenericsRetrieval;
 
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -29,7 +31,7 @@ import javax.lang.model.util.Types;
  * @Date: 2022/1/2 12:16 上午
  */
 @AutoService(Processor.class)
-public class GenericsTestProcessor extends AbstractProcessor {
+public class GenericsInterfaceTestProcessor extends AbstractProcessor {
     private Messager mMessager;
     private Filer mFiler;
     private Elements mElementUtils;
@@ -48,7 +50,7 @@ public class GenericsTestProcessor extends AbstractProcessor {
     @Override
     public Set<String> getSupportedAnnotationTypes() {
         HashSet<String> supportTypes = new LinkedHashSet<>();
-        supportTypes.add(GenericsTest.class.getCanonicalName());
+        supportTypes.add(GenericsInterfaceTest.class.getCanonicalName());
         return supportTypes;
     }
 
@@ -64,12 +66,12 @@ public class GenericsTestProcessor extends AbstractProcessor {
             return false;
         }
 
-        ClassGenericsRetrievalTest test = new ClassGenericsRetrievalTest();
+        InterfaceGenericsRetrievalTest test = new InterfaceGenericsRetrievalTest();
 
-        ClassGenericsRetrieval retrieval = new ClassGenericsRetrieval(test);
-        Set<? extends Element> elements = roundEnv.getElementsAnnotatedWith(GenericsTest.class);
+        InterfaceGenericsRetrieval retrieval = new InterfaceGenericsRetrieval(test);
+        Set<? extends Element> elements = roundEnv.getElementsAnnotatedWith(GenericsInterfaceTest.class);
         for (Element element : elements) {
-            retrieval.searchClassGenerics((TypeElement) element, mTypeUtils);
+            retrieval.searchGenerics((TypeElement) element, mTypeUtils);
         }
 
         System.out.println(test.retrievalClassMap());

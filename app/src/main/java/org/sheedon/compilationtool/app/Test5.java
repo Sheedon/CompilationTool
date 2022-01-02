@@ -2,6 +2,8 @@ package org.sheedon.compilationtool.app;
 
 import org.sheedon.annotation.GenericsClassTest;
 
+import java.util.ArrayList;
+
 /**
  * java类作用描述
  *
@@ -10,7 +12,7 @@ import org.sheedon.annotation.GenericsClassTest;
  * @Date: 2022/1/2 12:36 上午
  */
 @GenericsClassTest
-public class Test4 extends Test3<String, String, Integer> {
+public class Test5 extends ArrayList<String>{
 
     private String name;
     private int age;
@@ -22,4 +24,5 @@ public class Test4 extends Test3<String, String, Integer> {
     public void setName(String name) {
         this.name = name;
     }
+
 }

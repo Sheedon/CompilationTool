@@ -20,5 +20,5 @@ public interface ISearch {
      * @param element  类型元素
      * @param types    类型工具类
      */
-    RetrievalClassModel searchClassGenerics(TypeElement element, Types types);
+    RetrievalClassModel searchGenerics(TypeElement element, Types types);
 }

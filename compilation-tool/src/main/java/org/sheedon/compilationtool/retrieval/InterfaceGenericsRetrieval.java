@@ -14,8 +14,11 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
 
 /**
- * 「类上泛型」检索类，在处理编译时信息时，若我们的目标类包含泛型，那么为了关联「泛型类型」和「数据类型」，
- * 这必然通过套泛型的检索算法来获取「泛型类型」所指向的「数据类型」。
+ * 「接口上泛型」检索类，在处理编译时信息时，若我们的目标接口包含泛型，那么为了关联「泛型类型」和「数据类型」，
+ * 这必然通过套泛型的检索算法来获取「泛型类型」所指向的「数据类型」，这里采用的是鱼骨优先检索，
+ * 如鱼骨，有一根主鱼骨（继承的类），和鱼骨延伸的小鱼骨（类上实现的接口），再加上鱼刺（接口继承的接口）
+ * 优先核实主鱼骨和延伸小鱼骨（当前类的形式父类和形式接口），是否已存在「目标泛型存储数据」，没有则优先搜索父类，
+ * 依旧没有搜索到，则检索接口，并层级向上检索接口继承的接口
  * 例如：
  * <code>
  * // 我们设置的目标类
@@ -55,10 +58,10 @@ import javax.lang.model.util.Types;
  * @Email: sheedonsun@163.com
  * @Date: 2021/12/31 10:53 下午
  */
-public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
+public class InterfaceGenericsRetrieval extends AbstractGenericsRetrieval {
 
 
-    public ClassGenericsRetrieval(IRetrieval.AbstractRetrieval retrieval) {
+    public InterfaceGenericsRetrieval(IRetrieval.AbstractRetrieval retrieval) {
         super(retrieval);
     }
 
@@ -81,11 +84,6 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         RetrievalClassModel currentModel = retrievalMap.get(qualifiedName);
         if (currentModel != null) {
             return currentModel;
-        }
-
-        // 当前类必需是类，并且父类必需存在，最终要继承目标类
-        if (isInterfaceOrNotHasParentClass(element)) {
-            return null;
         }
 
         // 构建当前泛型记录类
@@ -118,63 +116,106 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
      * @return RetrievalClassModel 检索泛型数据信息
      */
     private RetrievalClassModel retrievalCurrentClass(TypeElement element, Types types) {
-        TypeMirror superTypeMirror = element.getSuperclass();
-        if (superTypeMirror == null) {
-            return null;
-        }
-
-        Element superElement = types.asElement(superTypeMirror);
-        if (!(superElement instanceof TypeElement)) {
-            return null;
-        }
-
-        // 获取父类信息
         Map<String, RetrievalClassModel> classMap = retrieval.retrievalClassMap();
-        TypeElement superTypeElement = (TypeElement) superElement;
-        // 父类RetrievalClassModel
-        String superclassName = superTypeElement.getQualifiedName().toString();
-        RetrievalClassModel superRetrievalModel = classMap.get(superclassName);
         // 当前类的RetrievalClassModel
         String qualifiedName = element.getQualifiedName().toString();
         RetrievalClassModel currentModel = classMap.get(qualifiedName);
 
-        // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
-        RetrievalClassModel checkLoaded = checkLoaded(superRetrievalModel, currentModel, element);
-        if (checkLoaded != null) {
-            return checkLoaded;
+        // 形式父类信息
+        TypeMirror superTypeMirror = element.getSuperclass();
+        String superclassName = null;
+        if (superTypeMirror != null) {
+
+            Element superElement = types.asElement(superTypeMirror);
+            superclassName = getClassName(superElement);
+            RetrievalClassModel checkLoaded = checkTypeElementAndLoaded(superElement, classMap, currentModel, element);
+            if (checkLoaded != null) {
+                return checkLoaded;
+            }
         }
 
         // 目标节点
         String targetClassName = retrieval.canonicalName();
-        if (Objects.equals(superclassName, targetClassName)) {
-            // 目标节点
-            RetrievalClassModel nodeClass = traverseTargetGenerics(superTypeMirror, qualifiedName);
-            if (nodeClass == null) {
-                return null;
+
+        // 形式接口信息
+        List<? extends TypeMirror> interfaces = element.getInterfaces();
+        for (TypeMirror mirror : interfaces) {
+            Element interfaceElement = types.asElement(mirror);
+            RetrievalClassModel checkLoaded = checkTypeElementAndLoaded(interfaceElement, classMap,
+                    currentModel, element);
+            if (checkLoaded != null) {
+                return checkLoaded;
             }
-            appendBindPosition(nodeClass, element.getTypeParameters());
-            return nodeClass;
+
+            String interfaceName = getClassName(interfaceElement);
+            if (!Objects.equals(interfaceName, targetClassName)) {
+                continue;
+            }
+
+            // 目标节点
+            RetrievalClassModel nodeClass = traverseTargetGenerics(mirror, qualifiedName);
+            if (nodeClass != null) {
+                appendBindPosition(nodeClass, element.getTypeParameters());
+                return nodeClass;
+            }
         }
 
 
         // 根节点/需要过滤的节点
-        Set<String> filterablePackages = retrieval.filterablePackages();
-        for (String filterablePackage : filterablePackages) {
-            if (superclassName.startsWith(filterablePackage)) {
-                return null;
+        if (superclassName != null) {
+            Set<String> filterablePackages = retrieval.filterablePackages();
+            long count = filterablePackages.stream().filter(superclassName::startsWith).count();
+            if (count == 0) {
+                // 得到父类检索信息
+                RetrievalClassModel superClassModel = searchGenerics((TypeElement) types.asElement(superTypeMirror), types);
+                if (superClassModel != null) {
+                    return traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element);
+                }
             }
         }
 
-        // 得到父类检索信息
-        RetrievalClassModel superClassModel = searchGenerics(superTypeElement, types);
-        if (superClassModel == null) {
+        for (TypeMirror typeMirror : interfaces) {
+            String interfaceName = getClassName(types.asElement(typeMirror));
+            if (interfaceName == null) {
+                continue;
+            }
+
+            Set<String> filterablePackages = retrieval.filterablePackages();
+            long count = filterablePackages.stream().filter(interfaceName::startsWith).count();
+            if (count == 0) {
+                // 得到接口检索信息
+                RetrievalClassModel interfaceClassModel = searchGenerics((TypeElement) types.asElement(typeMirror), types);
+                if (interfaceClassModel != null) {
+                    return traverseNodeAndBindPosition(typeMirror, currentModel, interfaceClassModel, element);
+                }
+            }
+        }
+        return null;
+    }
+
+
+    private RetrievalClassModel checkTypeElementAndLoaded(Element element,
+                                                          Map<String, RetrievalClassModel> classMap,
+                                                          RetrievalClassModel currentModel,
+                                                          TypeElement currentElement) {
+        if (element instanceof TypeElement) {
+            String superclassName = ((TypeElement) element).getQualifiedName().toString();
+            RetrievalClassModel superRetrievalModel = classMap.get(superclassName);
+
+            // 核实，若存在，则直接返回
+            return checkLoaded(superRetrievalModel, currentModel, currentElement);
+        }
+
+        return null;
+    }
+
+    private String getClassName(Element element) {
+        if (!(element instanceof TypeElement)) {
             return null;
         }
 
-        // 将泛型数据关联「同类-层级关联」+「继承类-坐标关联」
-        return traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element);
+        return ((TypeElement) element).getQualifiedName().toString();
     }
-
 
     /**
      * 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
@@ -222,16 +263,6 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         traverseNodeGenerics(superTypeMirror, currentModel, superClassModel);
         appendBindPosition(currentModel, element.getTypeParameters());
         return currentModel;
-    }
-
-    /**
-     * 当前是接口，或者不存在父类
-     *
-     * @param element 类型元素
-     * @return 当前是接口，或者不存在父类
-     */
-    private boolean isInterfaceOrNotHasParentClass(TypeElement element) {
-        return element.getKind().isInterface() || element.getSuperclass() == null;
     }
 
     /**
