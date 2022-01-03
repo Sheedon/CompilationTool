@@ -8,7 +8,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * java类作用描述
+ * 泛型检索者类
  *
  * @Author: sheedon
  * @Email: sheedonsun@163.com
