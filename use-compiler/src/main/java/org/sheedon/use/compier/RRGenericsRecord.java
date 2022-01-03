@@ -1,6 +1,6 @@
 package org.sheedon.use.compier;
 
-import org.sheedon.compilationtool.retrieval.IGenericsRecord;
+import org.sheedon.compilationtool.retrieval.core.IGenericsRecord;
 
 import java.util.Objects;
 

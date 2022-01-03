@@ -1,4 +1,4 @@
-package org.sheedon.compilationtool.retrieval;
+package org.sheedon.compilationtool.retrieval.core;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -44,7 +44,7 @@ public abstract class RetrievalClassModel {
     // 泛型对照表的key 关联当前泛型集合的位置
     private final Map<Integer, String> bindPositions = new HashMap<>();
     // 默认前缀，防止与目标类名字重复，导致填充问题
-    final static String PREFIX = "TYPE-";
+    public final static String PREFIX = "TYPE-";
 
     public RetrievalClassModel() {
     }

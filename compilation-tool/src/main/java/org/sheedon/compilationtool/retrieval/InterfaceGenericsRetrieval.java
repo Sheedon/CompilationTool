@@ -1,5 +1,12 @@
 package org.sheedon.compilationtool.retrieval;
 
+import org.sheedon.compilationtool.retrieval.core.AbstractGenericsRetrieval;
+import org.sheedon.compilationtool.retrieval.core.IGenericsRecord;
+import org.sheedon.compilationtool.retrieval.core.IRetrieval;
+import org.sheedon.compilationtool.retrieval.core.RetrievalClassModel;
+import org.sheedon.compilationtool.utils.ClassUtils;
+import org.sheedon.compilationtool.utils.GenericsRecordUtils;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -7,9 +14,6 @@ import java.util.Set;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.element.TypeParameterElement;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
 
@@ -21,38 +25,48 @@ import javax.lang.model.util.Types;
  * 依旧没有搜索到，则检索接口，并层级向上检索接口继承的接口
  * 例如：
  * <code>
- * // 我们设置的目标类
- * public class TargetClass<T,K>{
+ * // 我们设置的目标接口
+ * public interface TargetInterface<T,K>{
  * }
+ * <p>
  * // 直接继承自目标类的包装类
- * public class ParentClass<K,Model> extends TargetClass<K,String>{
+ * public interface ParentInterface<K,Model> extends List<K>, TargetInterface<K,String>{
  * }
  * // 实际使用的类
- * public class CurrentClass extends ParentClass<Org,UserModel>{
+ * public class CurrentClass extends ParentClass<Org,UserModel> implements ParentInterface<String,UserModel>{
  * }
  * </code>
  * 检索的逻辑为，从当前类开始向父类依次检索，直至搜索到「目标类」或「被检查过」的类为止，
  * 若搜索不到，则代表当前类不在我们目标检索的类范围，反馈null，否则得到搜索到的结果返回调用者。
+ * 在这里，我采用的是，优先检索当前类的形式父类和形式接口，若查不到，则到实际父类中再度按此策略检索，直至到根节点为止。
+ * 若都搜索不到，则按照由根节点的形式接口遍历深度搜索，我把这种搜索方式叫做「鱼骨优先搜索」。
+ * 主鱼骨：类的继承关系。
+ * 从主鱼骨延伸的鱼刺骨：实现的接口。
+ * 其他未由鱼骨延伸的小鱼刺：接口的继承关系。
+ * 所以这里的检索逻辑是：全局深搜，局部广搜，节点延伸再度深搜（广搜可能更好）。
+ * <p>
  * 在此，我的实现逻辑分为如下步骤：
  * 0.核实当前类是否被检索过，优化效率。
- * 1.核实当前是类，并且父类存在，以确保功能搜索方向没有错（当前是「类上泛型」检索类）。
- * 2.检索记录当前类信息
- * 2.1 加载父类检索信息，存在则直接关联到当前类上，无需再度向上检索，不存在继续执行检索。
- * 2.2 核实是否是目标类，是则与当前类关联，否则继续检索。
- * 2.3 核实是否在排除包中，是则说明搜索不到，返回null，否则继续检索。
- * 2.4 回到0，检索父类信息
- * 3.关联行为，分为「同类-层级关联」和「继承类-坐标关联」
- * 3.1 同类-层级关联：
- * 在 ParentClass 类中的 形式类 TargetClass<K,String> 和 实际类 TargetClass<T,K> 进行泛型关联。
- * 情况一：将泛型类型和泛型类型关联，TargetClass<K,String>中的K 和 TargetClass<T,K> 的T关联。
+ * 1.检索记录当前类信息
+ * 1.1 加载形式父类泛型存储信息，存在则直接关联到当前类上，无需再度向上检索，不存在继续向下执行。
+ * 1.2 加载形式实现接口存储信息，存在则直接关联到当前类上，无需再度向上检索，不存在继续向下执行。
+ * 1.3 核实形式接口是否是目标接口，是则与当前类关联，否则继续向下执行。
+ * 1.4 形式类是否在排除包中，是则说明搜索不到，否则搜索该形式父类的实际类，递归拿到数据（回到0，检索父类信息）。
+ * 1.4 形式接口是否在排除包中，是则说明搜索不到，否则搜索该形式接口的实际接口，递归拿到数据，
+ * 若该接口延伸拿不到，再检索其他接口（回到0，检索父类信息）。
+ * 1.5 都拿不到则返回null
+ * 2.关联行为，分为「同类-层级关联」和「继承类-坐标关联」
+ * 2.1 同类-层级关联：
+ * 在 ParentInterface 接口中的 形式接口 TargetInterface<K,String> 和 实际接口 TargetInterface<T,K> 进行泛型关联。
+ * 情况一：将泛型类型和泛型类型关联，TargetInterface<K,String>中的K 和 TargetInterface<T,K> 的T关联。
  * 情况二：将数据类型 String 与 K 绑定。
- * 由此，在 ParentClass 实际关联的 TargetClass 泛型为 T 和 K=String
- * 3.2 继承类-坐标关联:
- * 同样在 ParentClass 类中，ParentClass<K,Model> 和 TargetClass<K,String> 要进行位置上的关联。
- * 由 3.1 可知 TargetClass<K,String> 中的K，实际上是「目标类」中的T，
- * 所以对等，要将 ParentClass中的K 等效为T，从而记录格式并且向子类传递。
+ * 由此，在 ParentInterface 实际关联的 TargetInterface 泛型为 T 和 K=String
+ * 2.2 继承类-坐标关联:
+ * 同样在 ParentInterface 类中，ParentInterface<K,Model> 和 TargetInterface<K,String> 要进行位置上的关联。
+ * 由 2.1 可知 TargetInterface<K,String> 中的K，实际上是「目标类」中的T，
+ * 所以对等，要将 ParentInterface 等效为T，从而记录格式并且向子类传递。
  * <p>
- * 由以上4步，便可得到当前类所关联的目标类的定义信息。
+ * 由以上3步，便可得到当前类所关联的目标类的定义信息。
  *
  * @Author: sheedon
  * @Email: sheedonsun@163.com
@@ -106,10 +120,12 @@ public class InterfaceGenericsRetrieval extends AbstractGenericsRetrieval {
      * 2.核实父类是否已加载泛型存储数据，有则根据是否泛型填充完整，做关联行为，
      * 若填充完整，则浅拷贝，共用同一个存储对象。
      * 若不完整，则深拷贝，防止更改时影响父类的存储元素。
-     * 3.核实是否是目标节点类，是则遍历关联泛型信息。
-     * 4.核实父类是否是在过滤包中，是则返回null，无需再次查找。
-     * 5.父类信息检索不到，则向祖父类检索 回到 searchClassGenerics()方法
-     * 6.从父类得到数据后，将泛型数据关联「同类-层级关联」+「继承类-坐标关联」。
+     * 3.核实接口是否已加载泛型存储数据，有则根据是否泛型填充完整，做关联行为，同2。
+     * 4.核实是否是目标节点接口，是则关联泛型信息，并且返回。
+     * 5.核实父类是否是在过滤包中，不是则检索形式父类的实际类，回到 searchClassGenerics()方法。
+     * 5.核实接口是否是在过滤包中，不是则检索形式接口的实际类，回到 searchClassGenerics()方法。
+     * 6.从父类/接口得到数据后，将泛型数据关联「同类-层级关联」+「继承类-坐标关联」。
+     * 7.都拿不到则返回null
      *
      * @param element 当前类的元素
      * @param types   类型工具
@@ -121,47 +137,48 @@ public class InterfaceGenericsRetrieval extends AbstractGenericsRetrieval {
         String qualifiedName = element.getQualifiedName().toString();
         RetrievalClassModel currentModel = classMap.get(qualifiedName);
 
-        // 形式父类信息
+        // 形式父类信息，若形式父类数据存在「泛型检索信息」则直接返回。
         TypeMirror superTypeMirror = element.getSuperclass();
         String superclassName = null;
         if (superTypeMirror != null) {
 
             Element superElement = types.asElement(superTypeMirror);
-            superclassName = getClassName(superElement);
-            RetrievalClassModel checkLoaded = checkTypeElementAndLoaded(superElement, classMap, currentModel, element);
+            superclassName = ClassUtils.loadQualifiedName(superElement);
+            RetrievalClassModel checkLoaded = GenericsRecordUtils.checkTypeElementAndLoaded(superElement, classMap, currentModel, element, retrieval);
             if (checkLoaded != null) {
                 return checkLoaded;
             }
         }
 
-        // 目标节点
+        // 目标节点（目标接口）
         String targetClassName = retrieval.canonicalName();
-
         // 形式接口信息
         List<? extends TypeMirror> interfaces = element.getInterfaces();
         for (TypeMirror mirror : interfaces) {
+            // 在形式接口上是否已经加载泛型存储数据
             Element interfaceElement = types.asElement(mirror);
-            RetrievalClassModel checkLoaded = checkTypeElementAndLoaded(interfaceElement, classMap,
-                    currentModel, element);
+            RetrievalClassModel checkLoaded = GenericsRecordUtils.checkTypeElementAndLoaded(interfaceElement, classMap,
+                    currentModel, element, retrieval);
             if (checkLoaded != null) {
                 return checkLoaded;
             }
 
-            String interfaceName = getClassName(interfaceElement);
+            // 检索父类是否是目标类，不是则检索下一个
+            String interfaceName = ClassUtils.loadQualifiedName(interfaceElement);
             if (!Objects.equals(interfaceName, targetClassName)) {
                 continue;
             }
 
             // 目标节点
-            RetrievalClassModel nodeClass = traverseTargetGenerics(mirror, qualifiedName);
+            RetrievalClassModel nodeClass = GenericsRecordUtils.traverseTargetGenerics(mirror, qualifiedName, retrieval);
             if (nodeClass != null) {
-                appendBindPosition(nodeClass, element.getTypeParameters());
+                GenericsRecordUtils.appendBindPosition(nodeClass, element.getTypeParameters());
                 return nodeClass;
             }
         }
 
 
-        // 根节点/需要过滤的节点
+        // 检索类——根节点/需要过滤的节点，不是则检索到实际父类上
         if (superclassName != null) {
             Set<String> filterablePackages = retrieval.filterablePackages();
             long count = filterablePackages.stream().filter(superclassName::startsWith).count();
@@ -169,13 +186,14 @@ public class InterfaceGenericsRetrieval extends AbstractGenericsRetrieval {
                 // 得到父类检索信息
                 RetrievalClassModel superClassModel = searchGenerics((TypeElement) types.asElement(superTypeMirror), types);
                 if (superClassModel != null) {
-                    return traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element);
+                    return GenericsRecordUtils.traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element, retrieval);
                 }
             }
         }
 
+        // 检索接口——根节点/需要过滤的节点，不是则检索到实际接口上
         for (TypeMirror typeMirror : interfaces) {
-            String interfaceName = getClassName(types.asElement(typeMirror));
+            String interfaceName = ClassUtils.loadQualifiedName(types.asElement(typeMirror));
             if (interfaceName == null) {
                 continue;
             }
@@ -186,200 +204,10 @@ public class InterfaceGenericsRetrieval extends AbstractGenericsRetrieval {
                 // 得到接口检索信息
                 RetrievalClassModel interfaceClassModel = searchGenerics((TypeElement) types.asElement(typeMirror), types);
                 if (interfaceClassModel != null) {
-                    return traverseNodeAndBindPosition(typeMirror, currentModel, interfaceClassModel, element);
+                    return GenericsRecordUtils.traverseNodeAndBindPosition(typeMirror, currentModel, interfaceClassModel, element, retrieval);
                 }
             }
         }
         return null;
-    }
-
-
-    private RetrievalClassModel checkTypeElementAndLoaded(Element element,
-                                                          Map<String, RetrievalClassModel> classMap,
-                                                          RetrievalClassModel currentModel,
-                                                          TypeElement currentElement) {
-        if (element instanceof TypeElement) {
-            String superclassName = ((TypeElement) element).getQualifiedName().toString();
-            RetrievalClassModel superRetrievalModel = classMap.get(superclassName);
-
-            // 核实，若存在，则直接返回
-            return checkLoaded(superRetrievalModel, currentModel, currentElement);
-        }
-
-        return null;
-    }
-
-    private String getClassName(Element element) {
-        if (!(element instanceof TypeElement)) {
-            return null;
-        }
-
-        return ((TypeElement) element).getQualifiedName().toString();
-    }
-
-    /**
-     * 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
-     *
-     * @param superRetrievalModel 父类检索信息
-     * @param currentModel        当前类的检索信息
-     * @param element             当前类的类型元素
-     * @return RetrievalClassModel 父类检索信息绑定到当前类
-     */
-    private RetrievalClassModel checkLoaded(RetrievalClassModel superRetrievalModel,
-                                            RetrievalClassModel currentModel,
-                                            TypeElement element) {
-        if (superRetrievalModel == null) {
-            return null;
-        }
-
-        // 是否填充完整，是则浅拷贝，并且返回
-        if (superRetrievalModel.isCompeted()) {
-            currentModel.bindGenericsRecord(currentModel.getRecord());
-            return currentModel;
-        }
-
-        // 遍历节点，用于绑定坐标
-        return traverseNodeAndBindPosition(element.getSuperclass(), currentModel, superRetrievalModel, element);
-    }
-
-    /**
-     * 「同类-层级关联」+「继承类-坐标关联」
-     *
-     * @param superTypeMirror 父类类型
-     * @param currentModel    当前类的泛型数据存储
-     * @param superClassModel 父类的泛型数据存储
-     * @param element         当前类的类型元素
-     * @return 父类检索信息绑定到当前类
-     */
-    private RetrievalClassModel traverseNodeAndBindPosition(TypeMirror superTypeMirror,
-                                                            RetrievalClassModel currentModel,
-                                                            RetrievalClassModel superClassModel,
-                                                            TypeElement element) {
-
-        // 否则，采用深拷贝
-        IGenericsRecord record = cloneBySuperRecord(superClassModel.getRecord());
-        currentModel.bindGenericsRecord(record);
-
-        traverseNodeGenerics(superTypeMirror, currentModel, superClassModel);
-        appendBindPosition(currentModel, element.getTypeParameters());
-        return currentModel;
-    }
-
-    /**
-     * 遍历目标泛型集合
-     * 将当前制定的实体类型 填充到
-     * 目标类的泛型上
-     * 流程
-     * 1. 获取当前类的父类描述泛型
-     * 2. 获取真实父类的泛型类型
-     * 3. 匹配描述泛型kind == TypeKind.DECLARED，代表可以填充
-     * 4. 不匹配的记录到对照表中
-     */
-    private RetrievalClassModel traverseTargetGenerics(TypeMirror superTypeMirror, String currentQualifiedName) {
-        if (!(superTypeMirror instanceof DeclaredType)) {
-            return null;
-        }
-
-        DeclaredType declaredType = (DeclaredType) superTypeMirror;
-
-        TypeElement superElement = (TypeElement) declaredType.asElement();
-        List<? extends TypeParameterElement> superParameters = superElement.getTypeParameters();
-        List<? extends TypeMirror> typeArguments = declaredType.getTypeArguments();
-        // 未设置泛型，或设置的泛型个数不一致
-        if (typeArguments.isEmpty() || superParameters.size() != typeArguments.size()) {
-            return null;
-        }
-
-        // 「同类-层级关联」
-        Map<String, RetrievalClassModel> classMap = retrieval.retrievalClassMap();
-        RetrievalClassModel classModel = classMap.get(currentQualifiedName);
-        for (int index = 0; index < superParameters.size(); index++) {
-            TypeParameterElement element = superParameters.get(index);
-            String typeName = element.asType().toString();
-
-            TypeMirror mirror = typeArguments.get(index);
-            if (mirror.getKind() == TypeKind.DECLARED) {
-                classModel.addTargetGenericsRecord(typeName, mirror.toString());
-            } else {
-                classModel.recordType(mirror.toString(), RetrievalClassModel.PREFIX + typeName);
-            }
-        }
-        return classModel;
-    }
-
-
-    /**
-     * 追加绑定泛型类型的位置，「继承类-坐标关联」
-     * AClass<T> extends BClass<T>{
-     * <p>
-     * }
-     * 绑定T的位置为0
-     *
-     * @param nodeClass         节点Class信息
-     * @param currentParameters 当前类的泛型参数 AClass<T> 中的T
-     */
-    private void appendBindPosition(RetrievalClassModel nodeClass, List<? extends TypeParameterElement> currentParameters) {
-        int index = 0;
-        for (TypeParameterElement parameter : currentParameters) {
-            nodeClass.bindPosition(parameter.asType().toString(), index);
-            index++;
-        }
-    }
-
-
-    /**
-     * 遍历目标泛型集合
-     * 将
-     * 1. 获取当前类的父类描述泛型
-     * 2. 获取真实父类的泛型类型
-     * 3. 匹配描述泛型kind == TypeKind.DECLARED，代表可以填充
-     * 4. 不匹配的记录到对照表中
-     */
-    private void traverseNodeGenerics(TypeMirror superTypeMirror,
-                                      RetrievalClassModel currentModel,
-                                      RetrievalClassModel superClassModel) {
-        if (!(superTypeMirror instanceof DeclaredType)) {
-            return;
-        }
-
-        DeclaredType declaredType = (DeclaredType) superTypeMirror;
-
-        List<? extends TypeMirror> typeArguments = declaredType.getTypeArguments();
-
-        if (typeArguments.isEmpty()) {
-            return;
-        }
-
-        // 「同类-层级关联」通过坐标获取泛型类型
-        Set<Integer> positions = superClassModel.getPositions();
-        for (Integer position : positions) {
-            String typeName = superClassModel.getTypeNameByPosition(position);
-            TypeMirror mirror = typeArguments.get(position);
-            if (mirror.getKind() == TypeKind.DECLARED) {
-                currentModel.addGenericsRecord(typeName, mirror.toString());
-            } else {
-                currentModel.recordType(mirror.toString(), typeName);
-            }
-        }
-
-    }
-
-    /**
-     * 从父记录中拷贝泛型处理记录
-     *
-     * @param record 父泛型处理记录
-     * @return 当前类的泛型处理记录
-     */
-    private IGenericsRecord cloneBySuperRecord(IGenericsRecord record) {
-        if (record == null) {
-            return retrieval.genericsRecord();
-        }
-
-        try {
-            return record.clone();
-        } catch (CloneNotSupportedException e) {
-            e.printStackTrace();
-        }
-        return retrieval.genericsRecord();
     }
 }

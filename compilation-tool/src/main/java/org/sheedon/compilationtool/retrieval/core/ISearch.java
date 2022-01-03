@@ -1,4 +1,4 @@
-package org.sheedon.compilationtool.retrieval;
+package org.sheedon.compilationtool.retrieval.core;
 
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.util.Types;

@@ -1,4 +1,4 @@
-package org.sheedon.compilationtool.retrieval;
+package org.sheedon.compilationtool.retrieval.core;
 
 import java.util.HashMap;
 import java.util.HashSet;

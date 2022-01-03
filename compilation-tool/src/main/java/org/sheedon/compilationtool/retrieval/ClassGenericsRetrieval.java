@@ -1,15 +1,17 @@
 package org.sheedon.compilationtool.retrieval;
 
-import java.util.List;
+import org.sheedon.compilationtool.retrieval.core.AbstractGenericsRetrieval;
+import org.sheedon.compilationtool.retrieval.core.IGenericsRecord;
+import org.sheedon.compilationtool.retrieval.core.IRetrieval;
+import org.sheedon.compilationtool.retrieval.core.RetrievalClassModel;
+import org.sheedon.compilationtool.utils.GenericsRecordUtils;
+
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.element.TypeParameterElement;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
 
@@ -139,7 +141,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         RetrievalClassModel currentModel = classMap.get(qualifiedName);
 
         // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
-        RetrievalClassModel checkLoaded = checkLoaded(superRetrievalModel, currentModel, element);
+        RetrievalClassModel checkLoaded = GenericsRecordUtils.checkLoaded(superRetrievalModel, currentModel, element, retrieval);
         if (checkLoaded != null) {
             return checkLoaded;
         }
@@ -148,11 +150,11 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         String targetClassName = retrieval.canonicalName();
         if (Objects.equals(superclassName, targetClassName)) {
             // 目标节点
-            RetrievalClassModel nodeClass = traverseTargetGenerics(superTypeMirror, qualifiedName);
+            RetrievalClassModel nodeClass = GenericsRecordUtils.traverseTargetGenerics(superTypeMirror, qualifiedName, retrieval);
             if (nodeClass == null) {
                 return null;
             }
-            appendBindPosition(nodeClass, element.getTypeParameters());
+            GenericsRecordUtils.appendBindPosition(nodeClass, element.getTypeParameters());
             return nodeClass;
         }
 
@@ -172,56 +174,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         }
 
         // 将泛型数据关联「同类-层级关联」+「继承类-坐标关联」
-        return traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element);
-    }
-
-
-    /**
-     * 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
-     *
-     * @param superRetrievalModel 父类检索信息
-     * @param currentModel        当前类的检索信息
-     * @param element             当前类的类型元素
-     * @return RetrievalClassModel 父类检索信息绑定到当前类
-     */
-    private RetrievalClassModel checkLoaded(RetrievalClassModel superRetrievalModel,
-                                            RetrievalClassModel currentModel,
-                                            TypeElement element) {
-        if (superRetrievalModel == null) {
-            return null;
-        }
-
-        // 是否填充完整，是则浅拷贝，并且返回
-        if (superRetrievalModel.isCompeted()) {
-            currentModel.bindGenericsRecord(currentModel.getRecord());
-            return currentModel;
-        }
-
-        // 遍历节点，用于绑定坐标
-        return traverseNodeAndBindPosition(element.getSuperclass(), currentModel, superRetrievalModel, element);
-    }
-
-    /**
-     * 「同类-层级关联」+「继承类-坐标关联」
-     *
-     * @param superTypeMirror 父类类型
-     * @param currentModel    当前类的泛型数据存储
-     * @param superClassModel 父类的泛型数据存储
-     * @param element         当前类的类型元素
-     * @return 父类检索信息绑定到当前类
-     */
-    private RetrievalClassModel traverseNodeAndBindPosition(TypeMirror superTypeMirror,
-                                                            RetrievalClassModel currentModel,
-                                                            RetrievalClassModel superClassModel,
-                                                            TypeElement element) {
-
-        // 否则，采用深拷贝
-        IGenericsRecord record = cloneBySuperRecord(superClassModel.getRecord());
-        currentModel.bindGenericsRecord(record);
-
-        traverseNodeGenerics(superTypeMirror, currentModel, superClassModel);
-        appendBindPosition(currentModel, element.getTypeParameters());
-        return currentModel;
+        return GenericsRecordUtils.traverseNodeAndBindPosition(superTypeMirror, currentModel, superClassModel, element, retrieval);
     }
 
     /**
@@ -232,123 +185,5 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
      */
     private boolean isInterfaceOrNotHasParentClass(TypeElement element) {
         return element.getKind().isInterface() || element.getSuperclass() == null;
-    }
-
-    /**
-     * 遍历目标泛型集合
-     * 将当前制定的实体类型 填充到
-     * 目标类的泛型上
-     * 流程
-     * 1. 获取当前类的父类描述泛型
-     * 2. 获取真实父类的泛型类型
-     * 3. 匹配描述泛型kind == TypeKind.DECLARED，代表可以填充
-     * 4. 不匹配的记录到对照表中
-     */
-    private RetrievalClassModel traverseTargetGenerics(TypeMirror superTypeMirror, String currentQualifiedName) {
-        if (!(superTypeMirror instanceof DeclaredType)) {
-            return null;
-        }
-
-        DeclaredType declaredType = (DeclaredType) superTypeMirror;
-
-        TypeElement superElement = (TypeElement) declaredType.asElement();
-        List<? extends TypeParameterElement> superParameters = superElement.getTypeParameters();
-        List<? extends TypeMirror> typeArguments = declaredType.getTypeArguments();
-        // 未设置泛型，或设置的泛型个数不一致
-        if (typeArguments.isEmpty() || superParameters.size() != typeArguments.size()) {
-            return null;
-        }
-
-        // 「同类-层级关联」
-        Map<String, RetrievalClassModel> classMap = retrieval.retrievalClassMap();
-        RetrievalClassModel classModel = classMap.get(currentQualifiedName);
-        for (int index = 0; index < superParameters.size(); index++) {
-            TypeParameterElement element = superParameters.get(index);
-            String typeName = element.asType().toString();
-
-            TypeMirror mirror = typeArguments.get(index);
-            if (mirror.getKind() == TypeKind.DECLARED) {
-                classModel.addTargetGenericsRecord(typeName, mirror.toString());
-            } else {
-                classModel.recordType(mirror.toString(), RetrievalClassModel.PREFIX + typeName);
-            }
-        }
-        return classModel;
-    }
-
-
-    /**
-     * 追加绑定泛型类型的位置，「继承类-坐标关联」
-     * AClass<T> extends BClass<T>{
-     * <p>
-     * }
-     * 绑定T的位置为0
-     *
-     * @param nodeClass         节点Class信息
-     * @param currentParameters 当前类的泛型参数 AClass<T> 中的T
-     */
-    private void appendBindPosition(RetrievalClassModel nodeClass, List<? extends TypeParameterElement> currentParameters) {
-        int index = 0;
-        for (TypeParameterElement parameter : currentParameters) {
-            nodeClass.bindPosition(parameter.asType().toString(), index);
-            index++;
-        }
-    }
-
-
-    /**
-     * 遍历目标泛型集合
-     * 将
-     * 1. 获取当前类的父类描述泛型
-     * 2. 获取真实父类的泛型类型
-     * 3. 匹配描述泛型kind == TypeKind.DECLARED，代表可以填充
-     * 4. 不匹配的记录到对照表中
-     */
-    private void traverseNodeGenerics(TypeMirror superTypeMirror,
-                                      RetrievalClassModel currentModel,
-                                      RetrievalClassModel superClassModel) {
-        if (!(superTypeMirror instanceof DeclaredType)) {
-            return;
-        }
-
-        DeclaredType declaredType = (DeclaredType) superTypeMirror;
-
-        List<? extends TypeMirror> typeArguments = declaredType.getTypeArguments();
-
-        if (typeArguments.isEmpty()) {
-            return;
-        }
-
-        // 「同类-层级关联」通过坐标获取泛型类型
-        Set<Integer> positions = superClassModel.getPositions();
-        for (Integer position : positions) {
-            String typeName = superClassModel.getTypeNameByPosition(position);
-            TypeMirror mirror = typeArguments.get(position);
-            if (mirror.getKind() == TypeKind.DECLARED) {
-                currentModel.addGenericsRecord(typeName, mirror.toString());
-            } else {
-                currentModel.recordType(mirror.toString(), typeName);
-            }
-        }
-
-    }
-
-    /**
-     * 从父记录中拷贝泛型处理记录
-     *
-     * @param record 父泛型处理记录
-     * @return 当前类的泛型处理记录
-     */
-    private IGenericsRecord cloneBySuperRecord(IGenericsRecord record) {
-        if (record == null) {
-            return retrieval.genericsRecord();
-        }
-
-        try {
-            return record.clone();
-        } catch (CloneNotSupportedException e) {
-            e.printStackTrace();
-        }
-        return retrieval.genericsRecord();
     }
 }

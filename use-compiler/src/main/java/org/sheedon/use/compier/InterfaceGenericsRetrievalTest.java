@@ -1,9 +1,8 @@
 package org.sheedon.use.compier;
 
-import org.sheedon.annotation.TargetClass;
 import org.sheedon.annotation.TargetInterface;
-import org.sheedon.compilationtool.retrieval.IGenericsRecord;
-import org.sheedon.compilationtool.retrieval.IRetrieval;
+import org.sheedon.compilationtool.retrieval.core.IGenericsRecord;
+import org.sheedon.compilationtool.retrieval.core.IRetrieval;
 
 import java.util.HashSet;
 import java.util.Set;

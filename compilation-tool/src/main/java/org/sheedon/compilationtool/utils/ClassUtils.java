@@ -61,4 +61,23 @@ public class ClassUtils {
         }
         return qualifiedName.substring(0, index);
     }
+
+
+    /**
+     * 加载全类名
+     *
+     * @param element 元素
+     * @return 全类名
+     */
+    public static String loadQualifiedName(Element element) {
+        if (element instanceof TypeElement) {
+            return ((TypeElement) element).getQualifiedName().toString();
+        }
+
+        if (element instanceof PackageElement) {
+            return ((PackageElement) element).getQualifiedName().toString();
+        }
+
+        return null;
+    }
 }

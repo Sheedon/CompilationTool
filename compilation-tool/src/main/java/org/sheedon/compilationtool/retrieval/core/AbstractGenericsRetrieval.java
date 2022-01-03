@@ -1,4 +1,4 @@
-package org.sheedon.compilationtool.retrieval;
+package org.sheedon.compilationtool.retrieval.core;
 
 /**
  * 抽象泛型检索类
