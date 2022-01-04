@@ -81,7 +81,7 @@ public class CurrentClass extends ParentClass<Org,UserModel>{
 
 ##### 完整流程如下：
 
-![ClassGenericsRetrieval](https://raw.githubusercontent.com/Sheedon/CompilationTool/97d44ad7a1fff19e338b10da4ab43554bf2a15c3/resource/ClassGenericsRetrieval.svg)
+![ClassGenericsRetrieval](https://raw.githubusercontent.com/Sheedon/CompilationTool/56115f0c11a696ec24de1cb87903506b2479d1c3/resource/ClassGenericsRetrieval.svg)
 
 
 
@@ -119,7 +119,7 @@ public class CurrentClass extends ParentClass<Org,UserModel>{
 
 ##### 完整流程如下：
 
-![InterfaceGenericsRetrieval](https://raw.githubusercontent.com/Sheedon/CompilationTool/97d44ad7a1fff19e338b10da4ab43554bf2a15c3/resource/InterfaceGenericsRetrieval.svg)
+![InterfaceGenericsRetrieval](https://raw.githubusercontent.com/Sheedon/CompilationTool/56115f0c11a696ec24de1cb87903506b2479d1c3/resource/InterfaceGenericsRetrieval.svg)
 
 
 
