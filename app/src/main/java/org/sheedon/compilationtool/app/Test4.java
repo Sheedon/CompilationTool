@@ -2,6 +2,8 @@ package org.sheedon.compilationtool.app;
 
 import org.sheedon.annotation.GenericsClassTest;
 
+import java.util.List;
+
 /**
  * java类作用描述
  *

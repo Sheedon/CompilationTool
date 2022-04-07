@@ -12,7 +12,7 @@ import org.sheedon.annotation.GenericsInterfaceTest;
  * @Email: sheedonsun@163.com
  * @Date: 2022/1/2 12:36 上午
  */
-@GenericsInterfaceTest
+//@GenericsInterfaceTest
 public class Test6 extends Test5 implements View.OnClickListener,Interface3<String, String, Integer> {
 
     @Override

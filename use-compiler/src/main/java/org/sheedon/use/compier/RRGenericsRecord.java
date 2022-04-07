@@ -2,11 +2,14 @@ package org.sheedon.use.compier;
 
 import org.sheedon.compilationtool.retrieval.core.IGenericsRecord;
 
+import java.util.Arrays;
 import java.util.Objects;
+
+import javax.lang.model.type.TypeMirror;
 
 /**
  * AbstractRequestRouter 泛型记录
- *
+ * <p>
  * 包含对应位置下的泛型内容
  * AbstractRequestRouter 中定义了两个泛型：「RequestCard」「ResponseModel」
  * 当前需要匹配同类型，并且设置到genericsArray制定的位置上
@@ -25,7 +28,7 @@ public class RRGenericsRecord implements IGenericsRecord {
     public static final String RESPONSE_MODEL = "ResponseModel";
 
     // 泛型组
-    private String[] genericsArray = new String[2];
+    private TypeMirror[] genericsArray = new TypeMirror[2];
     // 标志 0b00:两个都没有 0b01:有REQUEST_CARD 0b10:有ResponseModel 0b11:两者都有
     private int sign = 0B00;
 
@@ -35,16 +38,16 @@ public class RRGenericsRecord implements IGenericsRecord {
      * genericsArray[0] : RequestCard
      * genericsArray[1] : ResponseModel
      *
-     * @param typeName        泛型类型
-     * @param entityClassName 实体类型
+     * @param typeName   泛型类型
+     * @param typeMirror 实体类型
      */
     @Override
-    public void put(String typeName, String entityClassName) {
+    public void put(String typeName, TypeMirror typeMirror) {
         if (Objects.equals(typeName, REQUEST_CARD)) {
-            genericsArray[0] = entityClassName;
+            genericsArray[0] = typeMirror;
             sign |= 0B01;
         } else if (Objects.equals(typeName, RESPONSE_MODEL)) {
-            genericsArray[1] = entityClassName;
+            genericsArray[1] = typeMirror;
             sign |= 0B10;
         }
     }
@@ -56,7 +59,7 @@ public class RRGenericsRecord implements IGenericsRecord {
      * @return 实体类全类名
      */
     @Override
-    public String get(String typeName) {
+    public TypeMirror get(String typeName) {
         if (Objects.equals(typeName, REQUEST_CARD)) {
             return genericsArray[0];
         } else if (Objects.equals(typeName, RESPONSE_MODEL)) {
@@ -77,7 +80,7 @@ public class RRGenericsRecord implements IGenericsRecord {
     public IGenericsRecord clone() {
         try {
             RRGenericsRecord record = (RRGenericsRecord) super.clone();
-            record.genericsArray = new String[2];
+            record.genericsArray = new TypeMirror[2];
             record.genericsArray[0] = genericsArray[0];
             record.genericsArray[1] = genericsArray[1];
             return record;
@@ -93,7 +96,15 @@ public class RRGenericsRecord implements IGenericsRecord {
     /**
      * 获取泛型集合
      */
-    public String[] getGenericsArray() {
+    public TypeMirror[] getGenericsArray() {
         return genericsArray;
+    }
+
+    @Override
+    public String toString() {
+        return "RRGenericsRecord{" +
+                "genericsArray=" + Arrays.toString(genericsArray) +
+                ", sign=" + sign +
+                '}';
     }
 }

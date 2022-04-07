@@ -138,7 +138,7 @@ public class GenericsRecordUtils {
 
             TypeMirror mirror = typeArguments.get(index);
             if (mirror.getKind() == TypeKind.DECLARED) {
-                classModel.addTargetGenericsRecord(typeName, mirror.toString());
+                classModel.addTargetGenericsRecord(typeName, mirror);
             } else {
                 classModel.recordType(mirror.toString(), RetrievalClassModel.PREFIX + typeName);
             }
@@ -192,7 +192,7 @@ public class GenericsRecordUtils {
             String typeName = superClassModel.getTypeNameByPosition(position);
             TypeMirror mirror = typeArguments.get(position);
             if (mirror.getKind() == TypeKind.DECLARED) {
-                currentModel.addGenericsRecord(typeName, mirror.toString());
+                currentModel.addGenericsRecord(typeName, mirror);
             } else {
                 currentModel.recordType(mirror.toString(), typeName);
             }

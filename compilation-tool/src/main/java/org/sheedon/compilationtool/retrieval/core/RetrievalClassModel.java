@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import javax.lang.model.type.TypeMirror;
+
 /**
  * 检索类Model，目的是将祖父类的泛型类型传递到当前类中
  * 例如祖父类 GrandParentsClass，父类 ParentsClass，当前类 CurrentClass。
@@ -52,26 +54,26 @@ public abstract class RetrievalClassModel {
     /**
      * 添加泛型记录
      *
-     * @param typeName        参数类型名称
-     * @param entityClassName 实际参数类型名称
+     * @param typeName   参数类型名称
+     * @param typeMirror 实际参数类型
      */
-    public void addGenericsRecord(String typeName, String entityClassName) {
+    public void addGenericsRecord(String typeName, TypeMirror typeMirror) {
         if (typeName.startsWith(PREFIX)) {
             typeName = typeName.replaceFirst(PREFIX, "");
             IGenericsRecord record = getRecord();
-            record.put(typeName, entityClassName);
+            record.put(typeName, typeMirror);
         }
     }
 
     /**
      * 添加目标泛型记录
      *
-     * @param typeName        参数类型名称
-     * @param entityClassName 实际参数类型名称
+     * @param typeName 参数类型名称
+     * @param mirror   实际参数类型
      */
-    public void addTargetGenericsRecord(String typeName, String entityClassName) {
+    public void addTargetGenericsRecord(String typeName, TypeMirror mirror) {
         IGenericsRecord record = getRecord();
-        record.put(typeName, entityClassName);
+        record.put(typeName, mirror);
     }
 
     /**
@@ -156,5 +158,14 @@ public abstract class RetrievalClassModel {
      */
     public String getTypeNameByPosition(int position) {
         return bindPositions.get(position);
+    }
+
+    @Override
+    public String toString() {
+        return "RetrievalClassModel{" +
+                "record=" + record +
+                ", compareTable=" + compareTable +
+                ", bindPositions=" + bindPositions +
+                '}';
     }
 }
