@@ -142,7 +142,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
 
         // 先核实一步，若存在，可减少后续目标节点和过滤节点的盘点耗时
         RetrievalClassModel checkLoaded = GenericsRecordUtils.checkLoaded(superRetrievalModel, currentModel, element, retrieval);
-        if (checkLoaded != null) {
+        if (checkLoaded != null && checkLoaded.isCompeted()) {
             return checkLoaded;
         }
 
