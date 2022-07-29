@@ -81,7 +81,7 @@ public class ClassGenericsRetrieval extends AbstractGenericsRetrieval {
         Map<String, RetrievalClassModel> retrievalMap = retrieval.retrievalClassMap();
         // 当前的检索记录
         RetrievalClassModel currentModel = retrievalMap.get(qualifiedName);
-        if (currentModel != null) {
+        if (currentModel != null && currentModel.isCompeted()) {
             return currentModel;
         }
 
