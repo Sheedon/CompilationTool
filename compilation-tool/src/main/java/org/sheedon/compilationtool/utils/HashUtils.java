@@ -26,12 +26,6 @@ public class HashUtils {
             return index;
         }
 
-        index = hashArray.indexOf(className);
-
-        if (index != -1) {
-            return index;
-        }
-
         hashArray.add(className);
         return hashArray.size() - 1;
     }
